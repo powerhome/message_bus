@@ -7,6 +7,11 @@ require 'redis'
 # ids are all sequencially increasing numbers starting at 0
 #
 
+# Avoid flooding the logs in production. Some of these
+# logging points will be called nearly 30,000 times per
+# minute during peak hours in prod
+LOG_SAMPLING_PERCENTAGE = (Rails.env.production? ? 1 : 100)
+
 module MessageBus::Redis; end
 class MessageBus::Redis::ReliablePubSub
   attr_reader :subscribed
@@ -128,7 +133,7 @@ class MessageBus::Redis::ReliablePubSub
       end
 
     end.round(3)
-    MessageBus.logger.info "[message_bus#publish] #{log_data.map{|k,v| "#{k}=#{v}"}.join(' ')}"
+    MessageBus.logger.info "[message_bus#publish] #{hash_to_kv_string(log_data)}"
     backlog_id
 
   rescue Redis::CommandError => e
@@ -199,28 +204,33 @@ class MessageBus::Redis::ReliablePubSub
 
   def backlog(channel, last_id = nil)
     log_data = {}
+    result = nil
     items = nil
     log_data[:backlog_seconds] = Benchmark.realtime do
       redis = pub_redis
       backlog_key = backlog_key(channel)
-      items = redis.zrangebyscore backlog_key, last_id.to_i + 1, "+inf"
+      log_data[:backlog_zrangebyscore_seconds] = Benchmark.realtime do
+        items = redis.zrangebyscore backlog_key, last_id.to_i + 1, "+inf"
+      end.round(3)
 
-      items.map do |i|
-        MessageBus::Message.decode(i)
-      end
+      result = items.map do |i|
+                 MessageBus::Message.decode(i)
+               end
     end.round(3)
-    MessageBus.logger.info "[message_bus#backlog] #{hash_to_kv_string(log_data)}"
-    items
+    MessageBus.logger.info "[message_bus#backlog] #{hash_to_kv_string(log_data)}" if rand(100) < LOG_SAMPLING_PERCENTAGE
+    result
   end
 
   def global_backlog(last_id = nil)
     log_data = {}
     items = nil
-    log_data[:backlog_seconds] = Benchmark.realtime do
+    log_data[:global_backlog_seconds] = Benchmark.realtime do
       last_id = last_id.to_i
       redis = pub_redis
 
-      items = redis.zrangebyscore global_backlog_key, last_id.to_i + 1, "+inf"
+      log_data[:global_backlog_zrangebyscore_seconds] = Benchmark.realtime do
+        items = redis.zrangebyscore global_backlog_key, last_id.to_i + 1, "+inf"
+      end.round(3)
 
       items.map! do |i|
         pipe = i.index "|"
@@ -232,7 +242,7 @@ class MessageBus::Redis::ReliablePubSub
 
       items.compact!
     end.round(3)
-    MessageBus.logger.info "[message_bus#global_backlog] #{hash_to_kv_string(log_data)}"
+    MessageBus.logger.info "[message_bus#global_backlog] #{hash_to_kv_string(log_data)}" if rand(100) < LOG_SAMPLING_PERCENTAGE
     items
   end
 
@@ -367,8 +377,8 @@ class MessageBus::Redis::ReliablePubSub
 
   private
 
-  def hash_to_kv_string(x)
-    log_data.map{|k,v| "#{k}=#{v}".freeze}.join(' '.freeze)
+  def hash_to_kv_string(h)
+    h.map{|k,v| "#{k}=#{v}".freeze}.join(' '.freeze)
   end
 
   def is_readonly?
