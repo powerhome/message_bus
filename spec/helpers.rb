@@ -10,7 +10,7 @@ end
 def test_config_for_backend(backend)
   config = { backend: backend, logger: Logger.new(STDOUT) }
   case backend
-  when :redis
+  when :redis, :redis_streams
     config[:url] = ENV['REDISURL']
   when :postgres
     config[:backend_options] = { host: ENV['PGHOST'], user: ENV['PGUSER'] || ENV['USER'], password: ENV['PGPASSWORD'], dbname: ENV['PGDATABASE'] || 'message_bus_test' }
