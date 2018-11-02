@@ -323,6 +323,8 @@ MessageBus.reliable_pub_sub.max_backlog_age = 100
 
 ```
 
+The primary Redis-based implementation uses Redis PubSub and sorted sets. An alternative implementation based on [Redis Streams](https://redis.io/topics/streams-intro) (available in Redis 5.0) is available by setting `backend: :redis_streams`.
+
 ### PostgreSQL
 
 message_bus also supports PostgreSQL as the backend:

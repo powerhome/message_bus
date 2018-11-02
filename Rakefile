@@ -37,12 +37,16 @@ run_spec = proc do |backend|
   end
 end
 
-task spec: [:spec_memory, :spec_redis, :spec_postgres, :spec_client_js, :rubocop]
+task spec: [:spec_memory, :spec_redis, :spec_redis_streams, :spec_postgres, :spec_client_js, :rubocop]
 
 task spec_client_js: 'jasmine:ci'
 
 task :spec_redis do
   run_spec.call('redis')
+end
+
+task :spec_redis_streams do
+  run_spec.call('redis_streams')
 end
 
 task :spec_memory do
