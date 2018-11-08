@@ -2,6 +2,7 @@ $: << File.dirname(__FILE__)
 $: << File.join(File.dirname(__FILE__), '..', 'lib')
 require 'thin'
 require 'lib/fake_async_middleware'
+require 'logger'
 require 'message_bus'
 
 require 'minitest/autorun'

@@ -8,7 +8,7 @@ def wait_for(timeout_milliseconds = 2000)
 end
 
 def test_config_for_backend(backend)
-  config = { backend: backend }
+  config = { backend: backend, logger: Logger.new(STDOUT) }
   case backend
   when :redis
     config[:url] = ENV['REDISURL']
