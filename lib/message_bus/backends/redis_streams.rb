@@ -113,10 +113,10 @@ class MessageBus::RedisStreams::ReliablePubSub
   local payload = string.format("%i|%i|%s", global_id, backlog_id, start_payload)
   local global_backlog_message = string.format("%i|%s", backlog_id, channel)
 
-  redis.call("XADD", backlog_key, "MAXLEN", max_backlog_size, string.format("0-%i", backlog_id), "payload", payload)
+  redis.call("XADD", backlog_key, "MAXLEN", "~", max_backlog_size, string.format("0-%i", backlog_id), "payload", payload)
   redis.call("EXPIRE", backlog_key, max_backlog_age)
 
-  redis.call("XADD", global_backlog_key, "MAXLEN", max_global_backlog_size, string.format("0-%i", global_id), "payload", global_backlog_message)
+  redis.call("XADD", global_backlog_key, "MAXLEN", "~", max_global_backlog_size, string.format("0-%i", global_id), "payload", global_backlog_message)
   redis.call("EXPIRE", global_backlog_key, max_backlog_age)
 
   return backlog_id
