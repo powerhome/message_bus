@@ -113,6 +113,10 @@ MessageBus.configure(on_middleware_error: proc do |env, e|
 end)
 ```
 
+#### Disabling message_bus
+
+In certain cases, it is undesirable for message_bus to start up on application start, for example in a Rails application during the `db:create` rake task when using the Postgres backend (which will error trying to connect to the non-existent database to subscribe). You can invoke `MessageBus.off` before the middleware chain is loaded in order to prevent subscriptions and publications from happening; in a Rails app you might do this in an initializer based on some environment variable or some other conditional means.
+
 ### Debugging
 
 When setting up MessageBus, it's useful to manually inspect channels before integrating a client application.
@@ -304,6 +308,18 @@ MessageBus.reliable_pub_sub.max_global_backlog_size = 100
 # flush per-channel backlog after 100 seconds of inactivity
 MessageBus.reliable_pub_sub.max_backlog_age = 100
 ```
+
+The primary Redis-based implementation uses Redis PubSub and sorted sets. An alternative implementation based on [Redis Streams](https://redis.io/topics/streams-intro) (available in Redis 5.0) is available by setting `backend: :redis_streams`.
+
+#### Streams
+
+An alternative backend implementation is available which uses Redis Streams rather than the traditional combo of Sorted Sets + Redis PubSub; it is intended to be more performant and more durable than the traditional implementation. You can use it like so:
+
+```ruby
+MessageBus.configure(backend: :redis_streams, url: "redis://:p4ssw0rd@10.0.1.1:6380/15")
+```
+
+Note that if you switch from `:redis` to `:redis_streams`, you will lose your existing backlogs and data is not migrated.
 
 ### PostgreSQL
 
@@ -559,6 +575,8 @@ If you are looking to contribute to this project here are some ideas
 - Improve general documentation (Add examples, refine existing examples)
 - Make MessageBus a nice website
 - Add optional transports for websocket and shared web workers
+
+When submitting a PR, please be sure to include notes on it in the `Unreleased` section of the changelog, but do not bump the version number.
 
 ### Running tests
 

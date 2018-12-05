@@ -95,7 +95,7 @@ describe PUB_SUB_CLASS do
     end
 
     it "should be able to store messages in memory for a period while in read only" do
-      test_only :redis
+      test_only :redis, :redis_streams
       skip "This spec changes redis behavior that in turn means other specs run slow"
 
       @bus.pub_redis.slaveof "127.0.0.80", "666"
@@ -175,6 +175,8 @@ describe PUB_SUB_CLASS do
 
     expected_backlog_size = 0
 
+    initial_id = @bus.last_id("/foo")
+
     # Start at time = 0s
     @bus.publish "/foo", "bar", max_backlog_age: 1
     expected_backlog_size += 1
@@ -197,6 +199,15 @@ describe PUB_SUB_CLASS do
     # Assert that the backlog did expire, and now has only the new publication in it.
     @bus.global_backlog.length.must_equal expected_backlog_size
     @bus.backlog("/foo", 0).length.must_equal expected_backlog_size
+
+    # for the time being we can give pg a pass here
+    # TODO: make the implementation here consistent
+    if MESSAGE_BUS_CONFIG[:backend] != :postgres
+      # ids are not opaque we expect them to be reset on our channel if it
+      # got cleared due to an expire, the reason for this is cause we will leak entries due to tracking
+      # this in turn can bloat storage for the backend
+      @bus.last_id("/foo").must_equal initial_id
+    end
 
     sleep 0.75 # Should now be at time =~ 2s
 
@@ -237,7 +248,7 @@ describe PUB_SUB_CLASS do
     @bus.publish "/hello", "planet"
 
     expected_messages = case MESSAGE_BUS_CONFIG[:backend]
-                        when :redis
+                        when :redis, :redis_streams
                           # Redis has channel-specific message IDs
                           [
                             MessageBus::Message.new(1, 1, "/foo", "bar"),
@@ -265,7 +276,7 @@ describe PUB_SUB_CLASS do
     @bus.publish "/bar", "b1"
 
     expected_messages = case MESSAGE_BUS_CONFIG[:backend]
-                        when :redis
+                        when :redis, :redis_streams
                           # Redis has channel-specific message IDs
                           [
                             MessageBus::Message.new(2, 2, "/foo", "b1"),
@@ -297,11 +308,13 @@ describe PUB_SUB_CLASS do
 
     @bus.publish("/foo", "two")
 
+    wait_for(100) { got.length == 1 }
+
     @bus.reset!
 
     @bus.publish("/foo", "three")
 
-    wait_for(100) do
+    wait_for(2000) do
       got.length == 2
     end
 
@@ -312,7 +325,7 @@ describe PUB_SUB_CLASS do
   end
 
   it "should support clear_every setting" do
-    test_never :redis
+    test_never :redis, :redis_streams
 
     @bus.clear_every = 5
     @bus.max_global_backlog_size = 2
