@@ -119,18 +119,21 @@ module MessageBus
       #
       # @param [String] channel the name of the channel in question
       # @param [#to_i] last_id the channel-specific ID of the last message that the caller received on the specified channel
+      # @param [Boolean] inclusive whether or not to incluse the message with specified `last_id` in the results
       #
-      # @return [Array<MessageBus::Message>] all messages published to the specified channel since the specified last ID
-      def backlog(channel, last_id = 0)
+      # @return [Array<MessageBus::Message>] all messages published to the specified channel since the specified last ID.
+      #   The messages will have a `global_id` of `-1` to indicate that they came directly from a channel.
+      def backlog(channel, last_id = 0, inclusive: false)
         raise ConcreteClassMustImplementError
       end
 
       # Get messages from the global backlog
       #
       # @param [#to_i] last_id the global ID of the last message that the caller received
+      # @param [Boolean] inclusive whether or not to incluse the message with specified `last_id` in the results
       #
       # @return [Array<MessageBus::Message>] all messages published on any channel since the specified last ID
-      def global_backlog(last_id = 0)
+      def global_backlog(last_id = 0, inclusive: false)
         raise ConcreteClassMustImplementError
       end
 
@@ -139,7 +142,8 @@ module MessageBus
       # @param [String] channel the name of the channel in question
       # @param [Integer] message_id the channel-specific ID of the message required
       #
-      # @return [MessageBus::Message, nil] the requested message, or nil if it does not exist
+      # @return [MessageBus::Message, nil] the requested message, or nil if it does not exist.
+      #   The message will have a `global_id` of `-1` to indicate that it came directly from a channel.
       def get_message(channel, message_id)
         raise ConcreteClassMustImplementError
       end
@@ -152,7 +156,8 @@ module MessageBus
       # @param [#to_i] last_id the channel-specific ID of the last message that the caller received on the specified channel
       #
       # @yield [message] a message-handler block
-      # @yieldparam [MessageBus::Message] message each message as it is delivered
+      # @yieldparam [MessageBus::Message] message each message as it is delivered.
+      #   The message will have a `global_id` of `-1` to indicate that it came directly from a channel.
       #
       # @return [nil]
       def subscribe(channel, last_id = nil)

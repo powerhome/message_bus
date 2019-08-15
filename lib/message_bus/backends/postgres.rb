@@ -71,20 +71,24 @@ module MessageBus
           nil
         end
 
-        def backlog(channel, backlog_id)
+        def backlog(channel, backlog_id, inclusive:)
           hold do |conn|
-            exec_prepared(conn, 'channel_backlog', [channel, backlog_id]) { |r| r.values.each { |a| a[0] = a[0].to_i } }
+            exec_prepared(conn, "channel_backlog#{inclusive ? '_inclusive' : nil}", [channel, backlog_id]) { |r| r.values.each { |a| a[0] = a[0].to_i } }
           end || []
         end
 
-        def global_backlog(backlog_id)
+        def global_backlog(backlog_id, inclusive:)
           hold do |conn|
-            exec_prepared(conn, 'global_backlog', [backlog_id]) { |r| r.values.each { |a| a[0] = a[0].to_i } }
+            exec_prepared(conn, "global_backlog#{inclusive ? '_inclusive' : nil}", [backlog_id]) { |r| r.values.each { |a| a[0] = a[0].to_i } }
           end || []
         end
 
         def get_value(channel, id)
-          hold { |conn| exec_prepared(conn, 'get_message', [channel, id]) { |r| r.getvalue(0, 0) } }
+          hold do |conn|
+            exec_prepared(conn, 'get_message', [channel, id]) do |r|
+              r.getvalue(0, 0) if r.ntuples > 0
+            end
+          end
         end
 
         def reconnect
@@ -216,7 +220,9 @@ module MessageBus
           conn.exec 'PREPARE clear_global_backlog AS DELETE FROM message_bus WHERE (id <= $1)'
           conn.exec 'PREPARE clear_channel_backlog AS DELETE FROM message_bus WHERE ((channel = $1) AND (id <= (SELECT id FROM message_bus WHERE ((channel = $1) AND (id <= $2)) ORDER BY id DESC LIMIT 1 OFFSET $3)))'
           conn.exec 'PREPARE channel_backlog AS SELECT id, value FROM message_bus WHERE ((channel = $1) AND (id > $2)) ORDER BY id'
+          conn.exec 'PREPARE channel_backlog_inclusive AS SELECT id, value FROM message_bus WHERE ((channel = $1) AND (id >= $2)) ORDER BY id'
           conn.exec 'PREPARE global_backlog AS SELECT id, channel, value FROM message_bus WHERE (id > $1) ORDER BY id'
+          conn.exec 'PREPARE global_backlog_inclusive AS SELECT id, channel, value FROM message_bus WHERE (id >= $1) ORDER BY id'
           conn.exec "PREPARE expire AS DELETE FROM message_bus WHERE added_at < CURRENT_TIMESTAMP - ($1::text || ' seconds')::interval"
           conn.exec 'PREPARE get_message AS SELECT value FROM message_bus WHERE ((channel = $1) AND (id = $2))'
           conn.exec 'PREPARE max_channel_id AS SELECT max(id) FROM message_bus WHERE (channel = $1)'
@@ -296,17 +302,17 @@ module MessageBus
       end
 
       # (see Base#last_id)
-      def backlog(channel, last_id = 0)
-        items = client.backlog channel, last_id.to_i
+      def backlog(channel, last_id = 0, inclusive: false)
+        items = client.backlog channel, last_id.to_i, inclusive: inclusive
 
         items.map! do |id, data|
-          MessageBus::Message.new id, id, channel, data
+          MessageBus::Message.new(-1, id, channel, data)
         end
       end
 
       # (see Base#global_backlog)
-      def global_backlog(last_id = 0)
-        items = client.global_backlog last_id.to_i
+      def global_backlog(last_id = 0, inclusive: false)
+        items = client.global_backlog last_id.to_i, inclusive: inclusive
 
         items.map! do |id, channel, data|
           MessageBus::Message.new id, id, channel, data
@@ -316,7 +322,7 @@ module MessageBus
       # (see Base#get_message)
       def get_message(channel, message_id)
         if data = client.get_value(channel, message_id)
-          MessageBus::Message.new message_id, message_id, channel, data
+          MessageBus::Message.new(-1, message_id, channel, data)
         else
           nil
         end
@@ -329,7 +335,10 @@ module MessageBus
         raise ArgumentError unless block_given?
 
         global_subscribe(last_id) do |m|
-          yield m if m.channel == channel
+          if m.channel == channel
+            m.global_id = -1
+            yield m
+          end
         end
       end
 

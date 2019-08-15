@@ -22,8 +22,30 @@ describe PUB_SUB_CLASS do
     @bus.publish "/foo", "baz"
 
     @bus.backlog("/foo", 0).to_a.must_equal [
-      MessageBus::Message.new(1, 1, '/foo', 'bar'),
-      MessageBus::Message.new(2, 2, '/foo', 'baz')
+      MessageBus::Message.new(-1, 1, '/foo', 'bar'),
+      MessageBus::Message.new(-1, 2, '/foo', 'baz')
+    ]
+  end
+
+  it "should be able to access the backlog starting from some message (exclusive)" do
+    @bus.publish "/foo", "bar"
+    @bus.publish "/foo", "baz"
+    @bus.publish "/foo", "bash"
+
+    @bus.backlog("/foo", 1).to_a.must_equal [
+      MessageBus::Message.new(-1, 2, '/foo', 'baz'),
+      MessageBus::Message.new(-1, 3, '/foo', 'bash'),
+    ]
+  end
+
+  it "should be able to access the backlog starting from some message (inclusive)" do
+    @bus.publish "/foo", "bar"
+    @bus.publish "/foo", "baz"
+    @bus.publish "/foo", "bash"
+
+    @bus.backlog("/foo", 2, inclusive: true).to_a.must_equal [
+      MessageBus::Message.new(-1, 2, '/foo', 'baz'),
+      MessageBus::Message.new(-1, 3, '/foo', 'bash'),
     ]
   end
 
@@ -43,8 +65,8 @@ describe PUB_SUB_CLASS do
     end
 
     @bus.backlog("/foo").to_a.must_equal [
-      MessageBus::Message.new(3, 3, '/foo', 'three'),
-      MessageBus::Message.new(4, 4, '/foo', 'four'),
+      MessageBus::Message.new(-1, 3, '/foo', 'three'),
+      MessageBus::Message.new(-1, 4, '/foo', 'four'),
     ]
   end
 
@@ -60,8 +82,8 @@ describe PUB_SUB_CLASS do
   it "should be able to grab a message by id" do
     id1 = @bus.publish "/foo", "bar"
     id2 = @bus.publish "/foo", "baz"
-    @bus.get_message("/foo", id2).must_equal MessageBus::Message.new(2, 2, "/foo", "baz")
-    @bus.get_message("/foo", id1).must_equal MessageBus::Message.new(1, 1, "/foo", "bar")
+    @bus.get_message("/foo", id2).must_equal MessageBus::Message.new(-1, 2, "/foo", "baz")
+    @bus.get_message("/foo", id1).must_equal MessageBus::Message.new(-1, 1, "/foo", "bar")
   end
 
   it "should have the correct number of messages for multi threaded access" do
@@ -268,6 +290,52 @@ describe PUB_SUB_CLASS do
     @bus.global_backlog.to_a.must_equal expected_messages
   end
 
+  it "should be able to access the global backlog starting from some message (exclusive)" do
+    @bus.publish "/foo", "bar"
+    @bus.publish "/hello", "world"
+    @bus.publish "/foo", "baz"
+    @bus.publish "/hello", "planet"
+
+    expected_messages = case MESSAGE_BUS_CONFIG[:backend]
+                        when :redis, :redis_streams
+                          # Redis has channel-specific message IDs
+                          [
+                            MessageBus::Message.new(3, 2, "/foo", "baz"),
+                            MessageBus::Message.new(4, 2, "/hello", "planet")
+                          ]
+                        else
+                          [
+                            MessageBus::Message.new(3, 3, "/foo", "baz"),
+                            MessageBus::Message.new(4, 4, "/hello", "planet")
+                          ]
+    end
+
+    @bus.global_backlog(2).to_a.must_equal expected_messages
+  end
+
+  it "should be able to access the global backlog starting from some message (inclusive)" do
+    @bus.publish "/foo", "bar"
+    @bus.publish "/hello", "world"
+    @bus.publish "/foo", "baz"
+    @bus.publish "/hello", "planet"
+
+    expected_messages = case MESSAGE_BUS_CONFIG[:backend]
+                        when :redis, :redis_streams
+                          # Redis has channel-specific message IDs
+                          [
+                            MessageBus::Message.new(3, 2, "/foo", "baz"),
+                            MessageBus::Message.new(4, 2, "/hello", "planet")
+                          ]
+                        else
+                          [
+                            MessageBus::Message.new(3, 3, "/foo", "baz"),
+                            MessageBus::Message.new(4, 4, "/hello", "planet")
+                          ]
+    end
+
+    @bus.global_backlog(3, inclusive: true).to_a.must_equal expected_messages
+  end
+
   it "should correctly omit dropped messages from the global backlog" do
     @bus.max_backlog_size = 1
     @bus.publish "/foo", "a1"
@@ -321,7 +389,7 @@ describe PUB_SUB_CLASS do
     t.kill
 
     got.map { |m| m.data }.must_equal ["two", "three"]
-    got[1].global_id.must_equal 1
+    got[1].message_id.must_equal 1
   end
 
   it "should support clear_every setting" do

@@ -107,20 +107,38 @@ module MessageBus
           nil
         end
 
-        def backlog(channel, backlog_id)
-          sync { chan(channel).backlog.select { |id, _| id > backlog_id } }
+        def backlog(channel, backlog_id, inclusive:)
+          sync do
+            chan(channel).backlog.select do |id, _|
+              if inclusive
+                id >= backlog_id
+              else
+                id > backlog_id
+              end
+            end
+          end
         end
 
-        def global_backlog(backlog_id)
+        def global_backlog(backlog_id, inclusive:)
           sync do
             @channels.dup.flat_map do |channel_name, channel|
-              channel.backlog.select { |id, _| id > backlog_id }.map { |id, value| [id, channel_name, value] }
+              relevant_backlog = channel.backlog.select do |id, _|
+                if inclusive
+                  id >= backlog_id
+                else
+                  id > backlog_id
+                end
+              end
+              relevant_backlog.map { |id, value| [id, channel_name, value] }
             end.sort
           end
         end
 
         def get_value(channel, id)
-          sync { chan(channel).backlog.find { |i, _| i == id }[1] }
+          sync do
+            id, value = chan(channel).backlog.find { |i, _| i == id }
+            value
+          end
         end
 
         # Dangerous, drops the message_bus table containing the backlog if it exists.
@@ -241,17 +259,17 @@ module MessageBus
       end
 
       # (see Base#backlog)
-      def backlog(channel, last_id = 0)
-        items = client.backlog channel, last_id.to_i
+      def backlog(channel, last_id = 0, inclusive: false)
+        items = client.backlog channel, last_id.to_i, inclusive: inclusive
 
         items.map! do |id, data|
-          MessageBus::Message.new id, id, channel, data
+          MessageBus::Message.new(-1, id, channel, data)
         end
       end
 
       # (see Base#global_backlog)
-      def global_backlog(last_id = 0)
-        items = client.global_backlog last_id.to_i
+      def global_backlog(last_id = 0, inclusive: false)
+        items = client.global_backlog last_id.to_i, inclusive: inclusive
 
         items.map! do |id, channel, data|
           MessageBus::Message.new id, id, channel, data
@@ -261,7 +279,7 @@ module MessageBus
       # (see Base#get_message)
       def get_message(channel, message_id)
         if data = client.get_value(channel, message_id)
-          MessageBus::Message.new message_id, message_id, channel, data
+          MessageBus::Message.new(-1, message_id, channel, data)
         else
           nil
         end
@@ -274,7 +292,10 @@ module MessageBus
         raise ArgumentError unless block_given?
 
         global_subscribe(last_id) do |m|
-          yield m if m.channel == channel
+          if m.channel == channel
+            m.global_id = -1
+            yield m
+          end
         end
       end
 

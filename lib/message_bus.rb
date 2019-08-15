@@ -446,14 +446,15 @@ module MessageBus::Implementation
   # @param [String] channel the name of the channel in question
   # @param [#to_i] last_id the channel-specific ID of the last message that the caller received on the specified channel
   # @param [String] site_id the ID of the site by which to filter
+  # @param [Boolean] inclusive whether or not to incluse the message with specified `last_id` in the results
   #
   # @return [Array<MessageBus::Message>] all messages published to the specified channel since the specified last ID
-  def backlog(channel = nil, last_id = nil, site_id = nil)
+  def backlog(channel = nil, last_id = nil, site_id = nil, inclusive: false)
     old =
       if channel
-        reliable_pub_sub.backlog(encode_channel_name(channel, site_id), last_id)
+        reliable_pub_sub.backlog(encode_channel_name(channel, site_id), last_id, inclusive: inclusive)
       else
-        reliable_pub_sub.global_backlog(last_id)
+        reliable_pub_sub.global_backlog(last_id, inclusive: inclusive)
       end
 
     old.each do |m|
@@ -479,10 +480,9 @@ module MessageBus::Implementation
   # @return [MessageBus::Message] the last message published to the given channel
   def last_message(channel)
     if last_id = last_id(channel)
-      messages = backlog(channel, last_id - 1)
-      if messages
-        messages[0]
-      end
+      message = reliable_pub_sub.get_message(encode_channel_name(channel, nil), last_id)
+      decode_message!(message) if message
+      message
     end
   end
 
@@ -588,41 +588,16 @@ module MessageBus::Implementation
     msg.client_ids = parsed["client_ids"]
   end
 
-  def replay_backlog(channel, last_id, site_id)
-    id = nil
-
-    backlog(channel, last_id, site_id).each do |m|
-      yield m
-      id = m.message_id
-    end
-
-    id
-  end
-
   def subscribe_impl(channel, site_id, last_id, &blk)
     raise MessageBus::BusDestroyed if @destroyed
 
     if last_id >= 0
-      # this gets a bit tricky, but we got to ensure ordering so we wrap the block
-      original_blk = blk
-      current_id = replay_backlog(channel, last_id, site_id, &blk)
-      just_yield = false
-
-      # we double check to ensure no messages snuck through while we were subscribing
-      blk = proc do |m|
-        if just_yield
-          original_blk.call m
-        else
-          if current_id && current_id == (m.message_id - 1)
-            original_blk.call m
-            just_yield = true
-          else
-            current_id = replay_backlog(channel, current_id, site_id, &original_blk)
-            if (current_id == m.message_id)
-              just_yield = true
-            end
-          end
-        end
+      existing_messages = backlog(channel, last_id, site_id, inclusive: true)
+      if existing_messages.empty?
+        raise ArgumentError, "You tried to subscribe starting from a message that doesn't exist yet."
+      end
+      existing_messages.each do |m|
+        yield m
       end
     end
 

@@ -50,11 +50,16 @@ describe MessageBus do
       data2 << msg.data
     end
 
+    @bus.publish("/minion", "bananana")
+
+    wait_for(2000) do
+      data2.length == 2 && data1.length == 1
+    end
+
     @bus.subscribe("/minion", 1) do |msg|
       data3 << msg.data
     end
 
-    @bus.publish("/minion", "bananana")
     @bus.publish("/minion", "it's so fluffy")
 
     wait_for(2000) do
@@ -64,6 +69,12 @@ describe MessageBus do
     data1.must_equal ['bananana', "it's so fluffy"]
     data2.must_equal ['banana', 'bananana', "it's so fluffy"]
     data3.must_equal ['banana', 'bananana', "it's so fluffy"]
+
+    -> do
+      @bus.subscribe("/minion", 4) do |msg| # This last_id doesn't exist yet
+        raise "Don't expect any delivery here"
+      end
+    end.must_raise ArgumentError
   end
 
   it "can transmit client_ids" do
