@@ -599,6 +599,24 @@ module MessageBus::Implementation
     @config[:client_message_filters]
   end
 
+  # @yieldparam [String] metric_name some name for the metric being recorded
+  def tracer(&blk)
+    @config[:tracer] = blk
+  end
+
+  # Executes the provided block of code within the context of a probe
+  # Intended to be managed by a consuming application which will define
+  # the `:tracer` config option.
+  #
+  # @param [String] metric_name some name for the metric being recorded
+  def trace(metric_name, &blk)
+    if @config[:tracer]
+      @config[:tracer].call(metric_name, &blk)
+    else
+      yield
+    end
+  end
+
   private
 
   ENCODE_SITE_TOKEN = "$|$"
