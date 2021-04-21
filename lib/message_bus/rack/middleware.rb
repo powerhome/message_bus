@@ -81,6 +81,7 @@ class MessageBus::Rack::Middleware
     client_id = env['PATH_INFO'][@base_route_length..-1].split("/")[0]
     return [404, {}, ["not found"]] unless client_id
 
+    user_id = group_ids = site_id = nil
     MessageBus.trace("messagebus/middleware/authentication") do
       user_id = @bus.user_id_lookup.call(env) if @bus.user_id_lookup
       group_ids = @bus.group_ids_lookup.call(env) if @bus.group_ids_lookup
@@ -90,6 +91,7 @@ class MessageBus::Rack::Middleware
     # close db connection as early as possible
     close_db_connection!
 
+    client = nil
     MessageBus.trace("messagebus/middleware/subscriptions") do
       client = MessageBus::Client.new(message_bus: @bus, client_id: client_id,
                                       user_id: user_id, site_id: site_id, group_ids: group_ids)
@@ -115,8 +117,8 @@ class MessageBus::Rack::Middleware
       end
     end
 
+    headers = {}
     MessageBus.trace("messagebus/middleware/headers") do
-      headers = {}
       headers["Cache-Control"] = "must-revalidate, private, max-age=0"
       headers["Content-Type"] = "application/json; charset=utf-8"
       headers["Pragma"] = "no-cache"
@@ -133,6 +135,7 @@ class MessageBus::Rack::Middleware
       return [200, headers, ["OK"]]
     end
 
+    long_polling = allow_chunked = false
     MessageBus.trace("messagebus/middleware/check_chunked") do
       long_polling = @bus.long_polling_enabled? &&
                     env['QUERY_STRING'] !~ /dlp=t/ &&
@@ -145,6 +148,7 @@ class MessageBus::Rack::Middleware
       client.use_chunked = allow_chunked
     end
 
+    backlog = nil
     MessageBus.trace("messagebus/middleware/calculate_backlog") do
       backlog = client.backlog
     end
