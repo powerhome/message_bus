@@ -158,7 +158,7 @@ class MessageBus::Rack::Middleware
     end
 
     if backlog.length > 0 && !allow_chunked
-      MessageBus.trace("middleware/close_long_poll") do
+      MessageBus.trace("middleware/immediate_response") do
         client.close
         @bus.logger.debug "Delivering backlog #{backlog} to client #{client_id} for user #{user_id}"
         [200, headers, [self.class.backlog_to_json(backlog)]]
