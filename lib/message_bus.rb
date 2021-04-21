@@ -617,6 +617,14 @@ module MessageBus::Implementation
     end
   end
 
+  # @yield [env] a routine to handle middleware decisions for tracing purposes
+  # @yieldparam [Hash<Symbol => Object>] attributes attributes detailing how message_bus handled the request
+  # @return [void]
+  def on_middleware_attributes(&blk)
+    configure(on_middleware_attributes: blk) if blk
+    @config[:on_middleware_attributes]
+  end
+
   private
 
   ENCODE_SITE_TOKEN = "$|$"

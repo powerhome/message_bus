@@ -149,6 +149,14 @@ class MessageBus::Rack::Middleware
       backlog = client.backlog
     end
 
+    if @bus.on_middleware_attributes
+      @bus.on_middleware_attributes.call(
+        messagebus_long_polling: long_polling,
+        messagebus_allow_chunked: allow_chunked,
+        messagebus_backlog_size: backlog.size
+      )
+    end
+
     if backlog.length > 0 && !allow_chunked
       MessageBus.trace("middleware/close_long_poll") do
         client.close
