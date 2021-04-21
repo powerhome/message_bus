@@ -151,6 +151,7 @@ class MessageBus::Rack::Middleware
 
     if @bus.on_middleware_attributes
       @bus.on_middleware_attributes.call(
+        messagebus_client_count: @connection_manager.client_count,
         messagebus_long_polling: long_polling,
         messagebus_allow_chunked: allow_chunked,
         messagebus_backlog_size: backlog.size
