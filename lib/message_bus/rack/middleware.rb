@@ -81,7 +81,7 @@ class MessageBus::Rack::Middleware
     client_id = env['PATH_INFO'][@base_route_length..-1].split("/")[0]
     return [404, {}, ["not found"]] unless client_id
 
-    MessageBus.trace("middleware/authentication") do
+    MessageBus.trace("messagebus/middleware/authentication") do
       user_id = @bus.user_id_lookup.call(env) if @bus.user_id_lookup
       group_ids = @bus.group_ids_lookup.call(env) if @bus.group_ids_lookup
       site_id = @bus.site_id_lookup.call(env) if @bus.site_id_lookup
@@ -90,7 +90,7 @@ class MessageBus::Rack::Middleware
     # close db connection as early as possible
     close_db_connection!
 
-    MessageBus.trace("middleware/subscriptions") do
+    MessageBus.trace("messagebus/middleware/subscriptions") do
       client = MessageBus::Client.new(message_bus: @bus, client_id: client_id,
                                       user_id: user_id, site_id: site_id, group_ids: group_ids)
 
@@ -115,7 +115,7 @@ class MessageBus::Rack::Middleware
       end
     end
 
-    MessageBus.trace("middleware/headers") do
+    MessageBus.trace("messagebus/middleware/headers") do
       headers = {}
       headers["Cache-Control"] = "must-revalidate, private, max-age=0"
       headers["Content-Type"] = "application/json; charset=utf-8"
@@ -133,7 +133,7 @@ class MessageBus::Rack::Middleware
       return [200, headers, ["OK"]]
     end
 
-    MessageBus.trace("middleware/check_chunked") do
+    MessageBus.trace("messagebus/middleware/check_chunked") do
       long_polling = @bus.long_polling_enabled? &&
                     env['QUERY_STRING'] !~ /dlp=t/ &&
                     @connection_manager.client_count < @bus.max_active_clients
@@ -145,7 +145,7 @@ class MessageBus::Rack::Middleware
       client.use_chunked = allow_chunked
     end
 
-    MessageBus.trace("middleware/calculate_backlog") do
+    MessageBus.trace("messagebus/middleware/calculate_backlog") do
       backlog = client.backlog
     end
 
@@ -159,13 +159,13 @@ class MessageBus::Rack::Middleware
     end
 
     if backlog.length > 0 && !allow_chunked
-      MessageBus.trace("middleware/immediate_response") do
+      MessageBus.trace("messagebus/middleware/immediate_response") do
         client.close
         @bus.logger.debug "Delivering backlog #{backlog} to client #{client_id} for user #{user_id}"
         [200, headers, [self.class.backlog_to_json(backlog)]]
       end
     elsif long_polling && env['rack.hijack'] && @bus.rack_hijack_enabled?
-      MessageBus.trace("middleware/setup_hijack") do
+      MessageBus.trace("messagebus/middleware/setup_hijack") do
         io = env['rack.hijack'].call
         # TODO disable client till deliver backlog is called
         client.io = io
@@ -207,7 +207,7 @@ class MessageBus::Rack::Middleware
 
       throw :async
     else
-      MessageBus.trace("middleware/simple_poll") do
+      MessageBus.trace("messagebus/middleware/simple_poll") do
         [200, headers, [self.class.backlog_to_json(backlog)]]
       end
     end
