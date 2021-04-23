@@ -599,7 +599,17 @@ module MessageBus::Implementation
     @config[:client_message_filters]
   end
 
-  # @yieldparam [String] metric_name some name for the metric being recorded
+  # Used to trace the performance of various phases of the treatment of a client request
+  # @yieldparam [String] metric_name some name for the metric being recorded. Possible values include:
+  #   * messagebus/middleware/authentication
+  #   * messagebus/middleware/subscriptions
+  #   * messagebus/middleware/headers
+  #   * messagebus/middleware/check_chunked
+  #   * messagebus/middleware/calculate_backlog
+  #   * messagebus/middleware/immediate_response
+  #   * messagebus/middleware/setup_hijack
+  #   * messagebus/middleware/simple_poll
+  # @see `MessageBus::Rack::Middleware#call` for details of what happens in each phase
   def tracer(&blk)
     @config[:tracer] = blk
   end
@@ -620,6 +630,10 @@ module MessageBus::Implementation
   # @yield [env] a routine to handle middleware decisions for tracing purposes
   # @yieldparam [Hash<Symbol => Object>] attributes attributes detailing how message_bus handled the request
   # @return [void]
+  #
+  # The provided attributes are: `:messagebus_seq`, `:messagebus_query_string`, `:messagebus_client_count`,
+  # `:messagebus_long_polling`, `:messagebus_http_version`, `:messagebus_dont_chunk`, `:messagebus_allow_chunked`,
+  # `:messagebus_backlog_size`.
   def on_middleware_attributes(&blk)
     configure(on_middleware_attributes: blk) if blk
     @config[:on_middleware_attributes]
